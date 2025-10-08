@@ -1,15 +1,15 @@
 # hook2kern
 Hook to kern conversion
 
-### Step 1:
+### Step 1: Extract the json file from the compressed file. 
 
-Extract the json file from the compressed file. 
+~~~
+gzip -d Hooktheory.json
+~~~
 
-~~~ gzip -d Hooktheory.json ~~~
 
+### Step 2: Convert the json file into kern.
 
-### Step 2:
-
-Convert the json file into kern.
-
-~~~ python convert.py ~~~
+~~~
+python convert.py
+~~~
