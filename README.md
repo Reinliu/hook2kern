@@ -12,6 +12,4 @@ Extract the json file from the compressed file.
 
 Convert the json file into kern.
 
-~~~
-python convert.py
-~~~
+~~~ python convert.py ~~~
