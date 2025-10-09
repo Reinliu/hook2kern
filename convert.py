@@ -179,7 +179,7 @@ def one_track_to_kern(track: dict, octave_anchor=4, grid_div=8):
     lines.append("**kern\t**harm")                     # 两列：旋律与和声
     lines.append(f"*M{beats_per_bar}/{beat_unit}\t*") # 拍号
     lines.append(f"{k_token}\t*")                     # 调号
-    lines.append("*MM120\t*")                         # 可选速度标记（需要可改实际 BPM）
+    lines.append("*MM120\t*")                         # 可选速度标记
 
     # helper function：按“相对八度+锚点”换算 MIDI
     def midi_for(n):
