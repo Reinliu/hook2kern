@@ -12,3 +12,7 @@ gzip -d Hooktheory.json
 ~~~
 python convert.py
 ~~~
+
+
+So far this script separates the kern grids in 1/8 tempo, meaning that there are 8 grids for each tempo. 
+
