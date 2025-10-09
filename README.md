@@ -16,3 +16,16 @@ python convert.py
 
 So far this script separates the kern grids in 1/8 tempo, meaning that there are 8 grids for each tempo. 
 
+Key steps:
+
+1) Read meter/key and generate header lines
+
+2) Filter out invalid melody notes (e.g., zero duration)
+
+3) Compute total beats and build the time grid (grid_div rows per beat)
+
+4) Print a **kern token with duration only at melody onsets; use '.' on other rows
+
+5) Print harmony only at chord onsets; use '.' on other rows
+
+6) Automatically add barlines and closing markers
