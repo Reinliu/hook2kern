@@ -16,7 +16,7 @@ def midi_to_kern(midi: int) -> str:
     octv = int(midi) // 12 - 1  # MIDI 到 **kern 八度的换算
     base = PC_NAMES_SHARP[pc]   # 使用偏升号命名
     letter = base[0].lower()    # **kern 旋律音一般用小写
-    accidental = "#" if len(base) == 2 else ""  # 这里只处理 #，需要降号可扩展
+    accidental = "#" if len(base) == 2 else ""  # 这里只处理 
     # 计算八度标记
     if   octv > 4: marks = "'" * (octv - 4)
     elif octv < 4: marks = "," * (4 - octv)
