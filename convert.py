@@ -108,7 +108,7 @@ PATTERNS = {
     (2, 5): ("sus2",  "triad"),   # sus2 Csus2
 
     # --- Sixths (triad + 6th = 9 semitones above root) ---
-    (4, 3, 2): ("6",   "6th"),    # 大六 C6 （根位：R-3-5-6 => 4,3,2）
+    (4, 3, 2): ("6",   "6th"),    # 大六 C6 
     (3, 4, 2): ("m6",  "6th"),    # 小六 Cm6
 
     # --- Sevenths (triad + 7th) ---
@@ -117,8 +117,8 @@ PATTERNS = {
     (3, 4, 3): ("m7",     "7th"),     # 小七 Cm7
     (3, 3, 4): ("m7b5",   "7th"),     # 半减七 Cø7
     (3, 3, 3): ("dim7",   "7th"),     # 全减七 C°7
-    (3, 4, 4): ("m(maj7)","7th"),     # 小大七 Cm(maj7)（较少见）
-    (4, 4, 3): ("maj7#5", "7th"),     # 大七增五 Cmaj7#5（较少见）
+    (3, 4, 4): ("m(maj7)","7th"),     # 小大七 Cm(maj7)
+    (4, 4, 3): ("maj7#5", "7th"),     # 大七增五 Cmaj7#5
 }
 
 def chord_symbol(root_pc: int, intervals: list, inversion: int) -> str:
