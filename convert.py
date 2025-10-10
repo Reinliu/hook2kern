@@ -60,7 +60,7 @@ def midi_to_kern(midi: int) -> str:
     else:          marks = ""
     return f"{letter}{accidental}{marks}"
 
-# 由主因和级进间隔推断出大小调关系
+# 由根音和间隔推断出大小调关系
 def key_token(tonic_pc: int, intervals: list) -> str:
     major6 = [2,2,1,2,2,2]
     minor6 = [2,1,2,2,1,2]
@@ -97,33 +97,50 @@ def beats_to_recip_frac(beats: float):
     # 转换为 Humdrum 的分母字符串
     return [str(x.denominator) for x in out]
 
+# 常见和弦的“根位相邻半音间隔”模式 → 文本标记
+PATTERNS = {
+    # --- Triads ---
+    (4, 3): ("",      "triad"),   # 大三 C
+    (3, 4): ("m",     "triad"),   # 小三 Cm
+    (3, 3): ("dim",   "triad"),   # 减三 Cdim
+    (4, 4): ("aug",   "triad"),   # 增三 Caug
+    (5, 2): ("sus4",  "triad"),   # sus4 Csus4
+    (2, 5): ("sus2",  "triad"),   # sus2 Csus2
 
-# 根据和弦根音+根位三和弦间隔生成一个简单的和弦符号
+    # --- Sixths (triad + 6th = 9 semitones above root) ---
+    (4, 3, 2): ("6",   "6th"),    # 大六 C6 （根位：R-3-5-6 => 4,3,2）
+    (3, 4, 2): ("m6",  "6th"),    # 小六 Cm6
+
+    # --- Sevenths (triad + 7th) ---
+    (4, 3, 3): ("7",      "7th"),     # 属七 C7
+    (4, 3, 4): ("maj7",   "7th"),     # 大七 Cmaj7
+    (3, 4, 3): ("m7",     "7th"),     # 小七 Cm7
+    (3, 3, 4): ("m7b5",   "7th"),     # 半减七 Cø7
+    (3, 3, 3): ("dim7",   "7th"),     # 全减七 C°7
+    (3, 4, 4): ("m(maj7)","7th"),     # 小大七 Cm(maj7)（较少见）
+    (4, 4, 3): ("maj7#5", "7th"),     # 大七增五 Cmaj7#5（较少见）
+}
+
 def chord_symbol(root_pc: int, intervals: list, inversion: int) -> str:
 
     root_pc = int(root_pc) % 12
-    intervals = list(intervals or [])
-    inversion = int(inversion or 0)
+    key = tuple(int(x) for x in (intervals or []))
+    inv = max(0, int(inversion or 0))
+
+    # 质量（quality）
+    quality, _kind = PATTERNS.get(key, ("5", "other"))
 
     root = PC_NAMES_SHARP[root_pc]
-    if intervals == [4,3]:
-        qual = ""            # 大三
-    elif intervals == [3,4]:
-        qual = "m"           # 小三
-    else:
-        qual = "5"           # 兜底
+    sym = f"{root}{quality}"
 
-    sym = f"{root}{qual}"
-    if inversion > 0:
-        # 仅对三和弦给出常见斜杠低音：一转为三音作低音，二转为五音作低音
-        if intervals == [4,3]:     # 大三：root, 3rd, 5th
-            bass_pc = (root_pc + (4 if inversion==1 else 7)) % 12
-        elif intervals == [3,4]:   # 小三：root, b3, 5th
-            bass_pc = (root_pc + (3 if inversion==1 else 7)) % 12
-        else:
-            bass_pc = (root_pc + 7) % 12
+    # 通用转位低音（只要 inv 在长度范围内）
+    if inv > 0 and inv <= len(key):
+        bass_semitones = sum(key[:inv]) % 12
+        bass_pc = (root_pc + bass_semitones) % 12
         sym += f"/{PC_NAMES_SHARP[bass_pc]}"
+
     return sym
+
 
 
 # ============================== core ==============================
@@ -208,7 +225,6 @@ def one_track_to_kern(track: dict, octave_anchor=4, grid_div=8,
     if len(rows) < 2:
         rows.append(float(step))  # 保证至少两行，避免后面计算步长时报错
 
-    # === 新增：网格步长 + 吸附函数（解决浮点抖动/近似不上格） ===
     grid_step = float(rows[1] - rows[0])  # 每行增加的拍长
     def _snap(x: float, stepf: float) -> float:
         # 把 x 吸附到最近的网格点（避免 0.499999/0.333333 这类误差）
