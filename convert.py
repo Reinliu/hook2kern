@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import json, os, argparse
 from fractions import Fraction
 from pathlib import Path
@@ -8,6 +11,40 @@ from pathlib import Path
 # 列出十二半音
 PC_NAMES_SHARP = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
 
+# 根据beat和times估计bpm
+def estimate_bpm(alignment: dict):
+
+    if not alignment:
+        return None
+    src = alignment.get("refined") or alignment.get("user")
+    if not src:
+        return None
+
+    beats = src.get("beats") or []
+    times = src.get("times") or []
+    if len(beats) < 2 or len(times) < 2 or len(beats) != len(times):
+        return None
+
+    bpms = []
+    for i in range(1, len(beats)):
+        db = float(beats[i]) - float(beats[i-1])
+        dt = float(times[i]) - float(times[i-1])
+        if dt > 0 and db > 0:
+            bpms.append((db / dt) * 60.0)
+
+    if not bpms:
+        return None
+
+    # 取中位数
+    bpms.sort()
+    mid = len(bpms) // 2
+    if len(bpms) % 2 == 1:
+        bpm = bpms[mid]
+    else:
+        bpm = 0.5 * (bpms[mid-1] + bpms[mid])
+
+    return bpm
+
 
 # 将MIDI音高号映射为 **kern 音名
 def midi_to_kern(midi: int) -> str:
@@ -16,7 +53,7 @@ def midi_to_kern(midi: int) -> str:
     octv = int(midi) // 12 - 1  # MIDI 到 **kern 八度的换算
     base = PC_NAMES_SHARP[pc]   # 使用偏升号命名
     letter = base[0].lower()    # **kern 旋律音一般用小写
-    accidental = "#" if len(base) == 2 else ""  # 这里只处理 
+    accidental = "#" if len(base) == 2 else ""  # 这里只处理
     # 计算八度标记
     if   octv > 4: marks = "'" * (octv - 4)
     elif octv < 4: marks = "," * (4 - octv)
@@ -32,13 +69,12 @@ def key_token(tonic_pc: int, intervals: list) -> str:
     name = PC_NAMES_SHARP[int(tonic_pc) % 12]
     return f"*{name.lower()}:" if mode_minor else f"*{name}:"
 
-# 将浮点拍子转成乐谱里的拍子。
-# 这里主要是把连续的dur量化分解到固定集合{1, 1/2, 1/4, 1/8, 1/16}上，低于最低限度（这里是1/64）就直接丢弃了
+# 将浮点拍子转成乐谱里的拍子
 def beats_to_recip_frac(beats: float):
 
     if beats is None:
         return []
-    if beats <= 1e-9:  # 非正时长直接跳过
+    if beats <= 1e-10:  # 非正时长直接跳过
         return []
 
     remaining = Fraction(beats).limit_denominator(128)
@@ -109,7 +145,12 @@ def _valid_note(n) -> bool:
     except Exception:
         return False
 
-def one_track_to_kern(track: dict, octave_anchor=4, grid_div=8):
+def one_track_to_kern(track: dict, octave_anchor=4, grid_div=8,
+                      # === 新增的稳健性与可读性开关（默认尽量对齐常见读谱） ===
+                      quantize_onset=True,   # onset 吸附到网格，防止浮点抖动导致“错过行”
+                      quantize_dur=True,     # duration 吸附到网格步长，连音更干净
+                      scale_dur=True,        # 按拍值缩放：4/4 下 1 拍→'4'；3/8 下 1 拍→'8'
+                      fill_chords=False):    # 和弦填充：没有新和弦时沿用上一个（替代 '.'）
     """
     将单个 track（含 annotations）转为 Humdrum 文本。
     关键步骤：
@@ -120,6 +161,7 @@ def one_track_to_kern(track: dict, octave_anchor=4, grid_div=8):
       5) 和弦仅在 onset 行打印；其他行用 '.'
       6) 自动加小节线与收尾行
     """
+
     ann = track.get("annotations") or {}
 
     # --- 1) 拍号 ---
@@ -166,11 +208,20 @@ def one_track_to_kern(track: dict, octave_anchor=4, grid_div=8):
     if len(rows) < 2:
         rows.append(float(step))  # 保证至少两行，避免后面计算步长时报错
 
+    # === 新增：网格步长 + 吸附函数（解决浮点抖动/近似不上格） ===
+    grid_step = float(rows[1] - rows[0])  # 每行增加的拍长
+    def _snap(x: float, stepf: float) -> float:
+        # 把 x 吸附到最近的网格点（避免 0.499999/0.333333 这类误差）
+        return round(x / stepf) * stepf
+
     # --- 6) 建立和弦起始拍索引：只在 onset 行输出和弦 ---
     chord_on = {}
     for h in harmony:
         try:
-            chord_on[round(float(h["onset"]), 6)] = h
+            on = float(h["onset"])
+            if quantize_onset:
+                on = _snap(on, grid_step)  # 吸附到网格
+            chord_on[round(on, 6)] = h
         except Exception:
             continue
 
@@ -179,9 +230,15 @@ def one_track_to_kern(track: dict, octave_anchor=4, grid_div=8):
     lines.append("**kern\t**harm")                     # 两列：旋律与和声
     lines.append(f"*M{beats_per_bar}/{beat_unit}\t*") # 拍号
     lines.append(f"{k_token}\t*")                     # 调号
-    lines.append("*MM120\t*")                         # 可选速度标记
 
-    # helper function：按“相对八度+锚点”换算 MIDI
+    # 计算bpm
+    align = track.get("alignment") or {}
+    bpm = estimate_bpm(align)
+    mm_token = f"*MM{int(round(bpm))}" if bpm else "*MM120"
+    lines.append(f"{mm_token}\t*")
+
+
+    # Helper Function：按“相对八度 + 锚点”换算 MIDI
     def midi_for(n):
         octv = int(octave_anchor) + int(n["octave"])
         return 12 * (octv + 1) + int(n["pitch_class"])
@@ -190,16 +247,22 @@ def one_track_to_kern(track: dict, octave_anchor=4, grid_div=8):
     starts = {}
     for n in melody:
         try:
-            on = round(float(n["onset"]), 6)
+            on = float(n["onset"])
+            if quantize_onset:
+                on = _snap(on, grid_step)  # 吸附到网格
+            starts.setdefault(round(on, 6), []).append(n)
         except Exception:
             continue
-        starts.setdefault(on, []).append(n)
 
     # 小节落点控制
     beats_per_bar_f = float(beats_per_bar)
     beat_in_bar = 0.0
     bar_no = 1
-    grid_step = float(rows[1] - rows[0])  # 每行增加的拍长
+
+    # 和弦填充
+    last_harm = "."
+
+    emitted = 0
 
     # 逐行输出
     for r_i, b in enumerate(rows):
@@ -212,9 +275,18 @@ def one_track_to_kern(track: dict, octave_anchor=4, grid_div=8):
         mel_tok = "."
         onset_notes = starts.get(round(b, 6), [])
         if onset_notes:
+            emitted += 1
             n = onset_notes[0]  # 单声部：取第一个即可
-            dur = float(n["offset"]) - float(n["onset"])
-            parts = beats_to_recip_frac(dur)  # 将持续拍长拆分成若干二进制时值
+
+            # --- 时值（单位：拍）---
+            dur_beats = float(n["offset"]) - float(n["onset"])
+            if quantize_dur:
+                dur_beats = _snap(dur_beats, grid_step)  # 吸附时值到网格步长（让 0.499999→0.5）
+
+            # 让 4/4 下 1 拍→ '4'（四分），3/8 下 1 拍→ '8'（八分）等，更贴近常见记谱直觉
+            dur_units = dur_beats * (4.0 / float(beat_unit)) if scale_dur else dur_beats
+
+            parts = beats_to_recip_frac(dur_units)  # 将持续拍长拆分成若干二进制时值
             if parts:
                 kern_pitch = midi_to_kern(midi_for(n))
                 if len(parts) == 1:
@@ -225,12 +297,14 @@ def one_track_to_kern(track: dict, octave_anchor=4, grid_div=8):
             # 若 parts 为空（极短/0 时长），就保持 '.'
 
         # 和弦列：只在 onset 行打印和弦符号，其他行 '.'
-        harm_tok = "."
         h = chord_on.get(round(b, 6))
         if h is not None:
             harm_tok = chord_symbol(h.get("root_pitch_class", 0),
                                     h.get("root_position_intervals", []),
                                     h.get("inversion", 0))
+            last_harm = harm_tok
+        else:
+            harm_tok = last_harm if fill_chords else "."
 
         lines.append(f"{mel_tok}\t{harm_tok}")
 
@@ -242,6 +316,7 @@ def one_track_to_kern(track: dict, octave_anchor=4, grid_div=8):
     # 收尾小节线与结束标记
     lines.append("=||\t=||")
     lines.append("*-\t*-")
+
     return "\n".join(lines)
 
 # ============================== I/O ==============================
@@ -267,6 +342,13 @@ def main():
     ap.add_argument("--out", required=True, help="Output .krn file OR an existing directory (one file per ID)")
     ap.add_argument("--octave-anchor", type=int, default=4, help="Anchor for relative melody octaves (default 4)")
     ap.add_argument("--grid-div", type=int, default=8, help="Rows per beat (8 ⇒ 1/8-beat grid)")
+    ap.add_argument("--quantize-onset",  action="store_true", default=True, help="onset 吸附到网格")
+    ap.add_argument("--no-quantize-onset", dest="quantize_onset", action="store_false")
+    ap.add_argument("--quantize-dur",    action="store_true", default=True, help="duration 吸附到网格")
+    ap.add_argument("--no-quantize-dur", dest="quantize_dur", action="store_false")
+    ap.add_argument("--scale-dur",       action="store_true", default=True, help="按拍值缩放")
+    ap.add_argument("--no-scale-dur",    dest="scale_dur", action="store_false")
+    ap.add_argument("--fill-chords",     action="store_true", default=False, help="和弦填充")
     args = ap.parse_args()
 
     tracks = load_tracks(args.json_in)
@@ -276,7 +358,13 @@ def main():
     if outpath.exists() and outpath.is_dir():
         written = 0
         for tid, track in tracks.items():
-            text = one_track_to_kern(track, octave_anchor=args.octave_anchor, grid_div=args.grid_div)
+            text = one_track_to_kern(track,
+                                     octave_anchor=args.octave_anchor,
+                                     grid_div=args.grid_div,
+                                     quantize_onset=args.quantize_onset,
+                                     quantize_dur=args.quantize_dur,
+                                     scale_dur=args.scale_dur,
+                                     fill_chords=args.fill_chords)
             if not text.strip():
                 # 空内容（无旋律/和声）则跳过
                 print(f"Skipping {tid}: no usable melody/harmony.")
@@ -288,7 +376,13 @@ def main():
 
     # 否则写单文件（若 JSON 有多首，取第一首）
     tid, track = next(iter(tracks.items()))
-    text = one_track_to_kern(track, octave_anchor=args.octave_anchor, grid_div=args.grid_div)
+    text = one_track_to_kern(track,
+                             octave_anchor=args.octave_anchor,
+                             grid_div=args.grid_div,
+                             quantize_onset=args.quantize_onset,
+                             quantize_dur=args.quantize_dur,
+                             scale_dur=args.scale_dur,
+                             fill_chords=args.fill_chords)
     if not text.strip():
         raise SystemExit(f"First track {tid} has no usable content; choose another or write to a directory.")
     Path(args.out).write_text(text, encoding="utf-8")
