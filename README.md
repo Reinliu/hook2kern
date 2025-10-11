@@ -10,7 +10,7 @@ gzip -d Hooktheory.json
 ### Step 2: Convert the json file into kern.
 
 ~~~
-python convert.py
+python convert.py --json_in Hooktheory.json --out kern
 ~~~
 
 
