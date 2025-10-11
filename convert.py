@@ -82,15 +82,14 @@ def beats_to_recip_frac(beats: float):
     out = []
 
     # 贪心法覆盖：每次尽量取最大的允许时值片段
-    for val in allowed:
-        # 这里用 Fraction(0,1) 避免 0 作分母的异常
-        while remaining - val >= Fraction(0,1) and remaining >= val:
+    for val in allowed:                
+        while remaining >= val:
             out.append(val)
             remaining -= val
 
     # 对剩余的“尾巴”做处理：若不是极小的数，就吸附到最近的允许值
-    if remaining > Fraction(0,1):
-        if remaining > Fraction(1,64):  # 小于等于 1/64 当作数值噪声忽略
+    if remaining > 0:                 
+        if remaining > Fraction(1, 64):
             closest = min(allowed, key=lambda x: abs(x - remaining))
             out.append(closest)
 
@@ -355,7 +354,7 @@ def main():
     """
     ap = argparse.ArgumentParser(description="Convert SheetSage/Hooktheory-style JSON → Humdrum **kern/**harm.")
     ap.add_argument("--json_in", default= 'Hooktheory.json', help="Input JSON keyed by track ID")
-    ap.add_argument("--out", required=True, help="Output .krn file OR an existing directory (one file per ID)")
+    ap.add_argument("--out", required=True, default='kern', help="Output .krn file OR an existing directory (one file per ID)")
     ap.add_argument("--octave-anchor", type=int, default=4, help="Anchor for relative melody octaves (default 4)")
     ap.add_argument("--grid-div", type=int, default=8, help="Rows per beat (8 ⇒ 1/8-beat grid)")
     ap.add_argument("--quantize-onset",  action="store_true", default=True, help="onset 吸附到网格")
