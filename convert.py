@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import json, argparse
 from fractions import Fraction
 from pathlib import Path
