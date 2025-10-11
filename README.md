@@ -1,5 +1,8 @@
 # Hook to kern conversion
 
+### Environments:
+This repo doesn't depend on any libraries. You should be able to use any python environments. (In my case it's Python 3.6.5)
+
 ### Step 1: Extract the json file from the compressed file. 
 
 ~~~
