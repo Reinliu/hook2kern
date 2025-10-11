@@ -17,8 +17,6 @@ python convert.py --json_in Hooktheory.json --out kern
 ~~~
 
 
-So far this script separates the kern grids in 1/8 tempo, meaning that there are 8 grids for each tempo. 
-
 Key steps:
 
 1) Read meter/key and generate header lines
