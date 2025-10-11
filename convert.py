@@ -408,10 +408,8 @@ def main():
         description="Convert Hooktheory/SheetSage JSON → Humdrum **kern/**harm"
     )
     # 默认输出目录叫 'kern'（批量写出）
-    parser.add_argument("--json_in", default="Hooktheory.json",
-                        help="输入 JSON（顶层以 ID 为键） [default: %(default)s]")
-    parser.add_argument("--out", default="kern",
-                        help="输出目录(批量) 或 单个文件名(.krn) [default: %(default)s]")
+    parser.add_argument("--json_in", default="Hooktheory.json", help="输入 JSON（顶层以 ID 为键")
+    parser.add_argument("--out", default="kern", help="输出目录(批量) 或 单个文件名(.krn)]")
     args = parser.parse_args()
 
     tracks = load_tracks(args.json_in)
